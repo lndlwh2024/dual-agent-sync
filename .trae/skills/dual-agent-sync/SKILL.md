@@ -46,7 +46,7 @@ If `.ai-sync/` is missing, ask the user whether to initialize it from the skill 
 - Never delete or rewrite historical sync events unless the user explicitly approves a repair.
 - Maintain one cursor file per AI IDE.
 - Always read all versions after the current cursor; never skip intermediate versions.
-- Prefer precise file reads based on event `files_changed` and `docs_changed`.
+- Prefer precise file reads based on event `files_changed` (utilizing line numbers if provided to reduce context) and `docs_changed`.
 - Do not reread the whole repository unless the ledger is missing, corrupt, or insufficient.
 - Print a chat audit notice whenever updates from another AI IDE are detected.
 - Stop and ask the user before editing if unread changes overlap with intended files.
@@ -169,7 +169,12 @@ Required event fields:
   },
   "scope": {
     "modules": [],
-    "files_changed": [],
+    "files_changed": [
+      {
+        "file": "src/file.ts",
+        "lines": ["10-20", "45-50"]
+      }
+    ],
     "docs_changed": []
   },
   "context": {

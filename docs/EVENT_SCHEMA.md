@@ -18,7 +18,12 @@ Each line of `.ai-sync/ledger.jsonl` is one JSON object.
   },
   "scope": {
     "modules": ["module-name"],
-    "files_changed": ["src/file.ts"],
+    "files_changed": [
+      {
+        "file": "src/file.ts",
+        "lines": ["10-20", "45-50"]
+      }
+    ],
     "docs_changed": ["docs/SPEC.md"]
   },
   "context": {

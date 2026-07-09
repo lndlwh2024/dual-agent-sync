@@ -148,7 +148,7 @@
 
 - `event_type`：`code_update`、`doc_update`、`bugfix`、`config_update` 或 `migration_update`。
 - `git.branch`、`git.base_commit`、`git.head_commit`：如尚未提交，写 `null` 并在摘要中说明。
-- `scope.files_changed`：代码/配置/迁移文件列表。
+- `scope.files_changed`：代码/配置/迁移文件列表（推荐记录具体的修改行号范围，如 `{"file": "src/main.py", "lines": ["10-20"]}`，以实现后续 AI 的按需精准加载，降低 Token 消耗）。
 - `scope.docs_changed`：文档文件列表。
 - `context.requirement_background`：需求背景。
 - `context.problem_background`：问题背景或触发原因。
@@ -587,7 +587,12 @@
   },
   "scope": {
     "modules": [],
-    "files_changed": [],
+    "files_changed": [
+      {
+        "file": "path/to/file",
+        "lines": ["10-20"]
+      }
+    ],
     "docs_changed": [],
     "files_analyzed": []
   },

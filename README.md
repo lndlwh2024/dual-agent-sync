@@ -52,6 +52,17 @@ curl -o .trae/skills/dual-agent-sync/SKILL.md https://raw.githubusercontent.com/
 - **个人与开源使用**：完全免费，欢迎 Star 🌟 与 PR。
 - **商用授权提示**：若需将其集成至商业化闭源 IDE 或作为商业卖点，请遵守 Apache 2.0 协议要求，并在分发时保留原作者版权声明及 License 文件。
 
+## 📅 变更日志 (Changelog)
+
+- **v1.2 (Latest)**：
+  - 增强 `files_changed` 字段，支持精确记录修改的行号范围（如 `{"file": "src/main.py", "lines": ["10-20"]}`），大幅降低接手 AI 的 Token 消耗，实现精准“按需加载”。
+  - 将 `README.md` 重构为产品落地页。
+- **v1.1**：
+  - 重构 `MANUAL.md`，引入基于 8 大场景的写入规范。
+  - 引入“诊断病历”结构，强制规范排查过程中的上下文交接，彻底杜绝聊天流水账。
+- **v1.0**：
+  - 初始开源发布，建立基于 `ledger.jsonl` 的核心账本机制与软锁防冲突机制。
+
 ---
 <div align="center">
   <i>Made with ❤️ for the AI Developer Community.</i>
