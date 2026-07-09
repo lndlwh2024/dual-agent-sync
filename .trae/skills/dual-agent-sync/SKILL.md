@@ -115,6 +115,24 @@ Before editing files:
 3. If another AI IDE has a relevant active lock, ask the user whether to wait, coordinate, or proceed.
 4. If intended files overlap with unread changes, stop and ask the user.
 
+## Advisory Locking (Soft Locks)
+
+The lock mechanism is **advisory**, not a technical file lock. It is a **declarative** protocol that relies on the compliance of all participating AI agents. This soft-lock approach is a protective measure for the workflow, designed to prevent accidental concurrent edits and to signal intent to other agents. It is not a substitute for version control but a complement to it.
+
+### Creating a Lock
+
+- Before starting a non-trivial change, an agent should write a `.json` file to the `.ai-sync/locks/` directory.
+- The lock file should declare the `scope` (modules/files) and `intent`.
+
+### Respecting a Lock
+
+- Before working on a set of files, an agent **MUST** check for existing locks that overlap with its intended scope.
+- If a lock exists, the agent must raise this to the user and wait for a decision.
+
+### Releasing a Lock
+
+- The lock file should be deleted by the creating agent after the corresponding `ledger.jsonl` event has been written and the work is considered complete.
+
 Soft lock format:
 
 ```json
