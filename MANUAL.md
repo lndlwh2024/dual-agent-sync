@@ -442,6 +442,31 @@ Codex 下次开始任务时应读取自己的 cursor，发现未读版本，并�
 - 摘要：测试skill同步更新机制，代码和文档没有任何变化
 ```
 
+### 第 4 步：Alpha 进行问题分析（无代码变更）
+
+**场景**：现在轮到 `alpha`。用户要求它分析 `module-a.js` 可能存在的性能问题，但不需要立即修改。
+
+1.  **模拟分析**：`alpha` 经过一番“思考”，得出了一个结论：“模块 A 在处理大规模数据时可能存在循环性能瓶颈”。
+
+2.  **调用 skill (记录分析结论)**：让 `alpha` 将这个诊断结论作为一次“会诊”结果同步给其他协作者。
+    *   **输入给 AI 的指令**：“使用 `dual-agent-sync` skill，记录一次分析交接。问题是‘模块A有性能风险’，结论是‘大规模数据下存在循环瓶颈，建议后续优化’。我的 ID 是 `ai-ide-alpha`。”
+    *   **预期行为**：
+        *   AI 会在 `ledger.jsonl` 中追加一条 `v0003` 的新事件，`event_type` 为 `analysis_handoff`。
+        *   该事件的 `files_changed` 为空，但 `context` 块会详细记录分析过程和结论。
+        *   AI 更新 `AUDIT_LOG.md` 和 `PROJECT_STATE.md`。
+        *   AI 更新自己的 cursor (`ai-ide-alpha.json`) 至 `v0003`。
+
+### 第 5 步：Bravo 同步“会诊”结果
+
+**场景**：切回 `bravo` 视角。
+
+1.  **调用 skill (检查更新)**：
+    *   **输入给 AI 的指令**：“使用 `dual-agent-sync` skill 检查 `H:\AIcode\Trae\test-collab-project` 的更新。我的 ID 是 `ai-ide-bravo`。”
+    *   **预期行为**：
+        *   AI 读取 `ledger.jsonl`，发现 `v0003` 是 `bravo` 未读的。
+        *   AI 在聊天窗口打印 `v0003` 的审计日志，摘要为 `alpha` 的分析结论。
+        *   `bravo` 现在已经知道了性能瓶颈的诊断信息，可以直接开始着手修复，而无需重复分析。
+
 ## 12. 版本说明
 
 本文档版本：`1.0`

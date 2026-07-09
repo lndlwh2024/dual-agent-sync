@@ -48,6 +48,7 @@ Each line of `.ai-sync/ledger.jsonl` is one JSON object.
 
 ## Event Types
 
+- `analysis_handoff`
 - `planning`
 - `code_update`
 - `doc_update`

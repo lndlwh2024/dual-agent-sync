@@ -217,6 +217,7 @@ Rules:
 
 Recommended event types:
 
+- `analysis_handoff`
 - `planning`
 - `code_update`
 - `doc_update`
@@ -228,6 +229,20 @@ Recommended event types:
 - `handoff`
 - `risk_notice`
 - `conflict_notice`
+
+## Code-Free Events: Analysis and Consultation
+
+This skill is not limited to synchronizing file changes. It is a powerful tool for handing off the results of complex analysis, debugging sessions, or planning discussions, even when no code is modified. This enables a "consultation" capability between agents.
+
+### Use Case: Diagnostic Handoff
+
+- **Scenario**: Agent `alpha` investigates a performance bottleneck. It analyzes logs, traces code paths, and forms a hypothesis, but does not change any files.
+- **Action**: Agent `alpha` records an event with `event_type: "analysis_handoff"`.
+- **Content**:
+  - The `scope` block can be empty or list the files that were analyzed.
+  - The `context` block **MUST** be filled with detailed findings: `problem_background` (what was observed), `solution` (the analysis process), `remaining_issues` (the hypothesis), and `next_steps` (recommendations for fixing).
+  - The `summary` should state the conclusion of the analysis.
+- **Result**: Agent `bravo` can then read this single event to understand the performance issue and start working on the fix, without repeating the diagnostic work.
 
 ## Conflict Handling
 
