@@ -33,14 +33,14 @@
 
 ## ⚡ 快速安装 / 启动
 
-只需 **3 行命令**，即可在任意项目中使能本 Skill（以 Trae 为例）：
+只需在终端执行以下命令，即可将 Skill 的核心协议（`SKILL.md`）安装到你的项目中（以 Trae 为例）：
 
 ```bash
 mkdir -p .trae/skills/dual-agent-sync
-curl -O https://raw.githubusercontent.com/lndlwh2024/dual-agent-sync/main/SKILL.md
-mv SKILL.md .trae/skills/dual-agent-sync/
+curl -o .trae/skills/dual-agent-sync/SKILL.md https://raw.githubusercontent.com/lndlwh2024/dual-agent-sync/main/.trae/skills/dual-agent-sync/SKILL.md
 ```
-*(💡 **Tips**: 在 AI IDE 聊天框输入：“请阅读并加载 dual-agent-sync 技能”，即可自动完成初始化)*
+
+*(💡 **Tips**: AI IDE 加载 `SKILL.md` 后，会根据其中的指令自动为你创建 `.ai-sync` 目录、初始化 `ledger.jsonl` 等所有必要的基础设施)*
 
 ## 📖 更多文档
 - [使用说明书与场景指南 (MANUAL.md)](./MANUAL.md)
