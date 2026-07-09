@@ -1,112 +1,44 @@
-# dual-agent-sync skill 使用说明书 v1.0
+# dual-agent-sync skill 使用说明书 v1.1
 
-本文档说明如何在一个项目中部署和使用 `dual-agent-sync`，让多个 AI IDE 协同开发同一个仓库时，以最小沟通成本完成更新同步、审计提示和上下文继承。
+本文档是 `dual-agent-sync` 的场景版使用说明。核心目标是让多个 AI IDE 在同一个项目中同步“个体进展、问题判断、代码/文档变化、风险和下一步”，而不是让下一个 AI 重新全量阅读项目。
 
-## 1. 设计目标
+## 1. 总原则
 
-`dual-agent-sync` 的目标不是替代 Git，而是在 Git 之外补充 AI 协作所需的“意图、背景、状态、风险、后续计划”信息。
+- 每个 AI IDE 默认已经了解项目全景，只需要同步其他成员的最新个体进展。
+- 已解决问题记录交付结果，允许简洁流水账。
+- 未解决问题记录诊断病历，禁止聊天流水账。
+- 推翻旧结论时必须显式纠错，避免旧结论继续误导后续 AI。
+- 共享事实源是 `.ai-sync/ledger.jsonl`，人类阅读入口是 `.ai-sync/AUDIT_LOG.md`。
+- 每个 AI IDE 只推进自己的 cursor，不替其他 AI IDE 标记已读。
+- 后续 `git push` 必须得到用户明确授权。
 
-它解决的问题包括：
+## 2. 项目目录分工
 
-- 多个 AI IDE 同时开发同一项目时，如何知道其他 AI 最近做了什么。
-- 如何避免一个 AI 跳过中间版本，只读到最新状态而漏掉重要背景。
-- 如何让 AI 只读相关变更，而不是每次全量扫描项目。
-- 如何让人类只看到必要的审计结果，而不是承担大量手工同步成本。
-- 如何在同一模块或同一文件并行开发前，先声明范围并降低冲突概率。
+### 2.1 AI IDE 私有使能目录
 
-## 2. 两类目录
+这些目录只用于让对应 AI IDE 加载 skill 规则，不记录项目同步事件。
 
-在目标项目中使用该 skill 时，会出现两类目录：
-
-- AI IDE 私有使能目录：让某个 AI IDE 能识别并加载 `dual-agent-sync` skill。
-- 项目共享同步目录：让所有 AI IDE 共同读写协作状态。
-
-这两类目录必须分清楚。
-
-## 3. AI IDE 私有使能目录
-
-每个 AI IDE 可以有自己的 skill 目录。该目录只负责“让该 IDE 知道这个 skill 的规则”，不负责记录项目协作状态。
-
-推荐结构：
-
-```text
-<project-root>/
-├─ .trae/
-│  └─ skills/
-│     └─ dual-agent-sync/
-│        └─ SKILL.md
-├─ .codex/
-│  └─ skills/
-│     └─ dual-agent-sync/
-│        └─ SKILL.md
-└─ .ai-sync/
-```
-
-### 3.1 `.trae/skills/dual-agent-sync/`
-
-用途：Trae IDE 的项目级 skill 使能目录。
-
-推荐文件：
-
-```text
-.trae/skills/dual-agent-sync/SKILL.md
-```
-
-说明：
-
-- 这是 Trae 的私有加载入口。
-- Trae 读取该文件后，应在共享项目任务前自动执行同步前置检查。
-- Trae 不应该把自己的协作事件写到 `.trae/` 目录中。
-
-### 3.2 `.codex/skills/dual-agent-sync/`
-
-用途：Codex 的项目级 skill 使能目录。
-
-推荐文件：
-
-```text
-.codex/skills/dual-agent-sync/SKILL.md
-```
-
-说明：
-
-- 这是 Codex 的私有加载入口。
-- Codex 读取该文件后，应遵守同一套 `.ai-sync` 协议。
-- Codex 不应该把自己的协作事件写到 `.codex/` 目录中。
-
-### 3.3 其他 AI IDE 的私有目录
-
-如果接入新的 AI IDE，建议按 IDE 名称创建私有目录。
-
-推荐命名：
-
-```text
-.<ide-name>/skills/dual-agent-sync/SKILL.md
-```
-
-示例：
-
-```text
-.cursor/skills/dual-agent-sync/SKILL.md
-.cline/skills/dual-agent-sync/SKILL.md
-.windsurf/skills/dual-agent-sync/SKILL.md
-```
+| AI IDE | 私有使能目录 | 作用 |
+| --- | --- | --- |
+| Trae | `.trae/skills/dual-agent-sync/SKILL.md` | Trae 项目级 skill 入口 |
+| Codex | `.codex/skills/dual-agent-sync/SKILL.md` | Codex 项目级 skill 入口 |
+| Cursor | `.cursor/skills/dual-agent-sync/SKILL.md` | Cursor 项目级 skill 入口 |
+| Cline | `.cline/skills/dual-agent-sync/SKILL.md` | Cline 项目级 skill 入口 |
+| Windsurf | `.windsurf/skills/dual-agent-sync/SKILL.md` | Windsurf 项目级 skill 入口 |
 
 规则：
 
-- 私有目录只存该 AI IDE 的 skill 加载文件。
-- 私有目录不作为跨 IDE 的同步账本。
-- 每个 IDE 可以复制同一份 `SKILL.md`，但实际协作状态统一写入 `.ai-sync/`。
+- 私有使能目录可以复制同一份 `SKILL.md`。
+- 私有使能目录不作为跨 IDE 同步账本。
+- AI IDE 不应把协作事件写入 `.trae/`、`.codex/`、`.cursor/` 等私有目录。
 
-## 4. 项目共享同步目录
+### 2.2 项目共享同步目录
 
-所有 AI IDE 共同使用的唯一共享目录是：
+所有 AI IDE 共同读写的唯一同步目录：
 
 ```text
 <project-root>/.ai-sync/
 ```
-
-这是项目级协作工作区。多个 AI IDE 都从这里读取更新，也向这里写入自己的同步事件。
 
 推荐结构：
 
@@ -116,131 +48,25 @@
 ├─ AUDIT_LOG.md
 ├─ PROJECT_STATE.md
 ├─ cursors/
-│  ├─ codex-main.json
 │  ├─ trae-main.json
+│  ├─ codex-main.json
 │  └─ <ai-ide-id>.json
 └─ locks/
    ├─ <scope>.lock.json
    └─ .gitkeep
 ```
 
-## 5. 共享目录文件职责
+## 3. 共享文件职责
 
-### 5.1 `ledger.jsonl`
+| 文件 | 类型 | 谁写 | 作用 |
+| --- | --- | --- | --- |
+| `.ai-sync/ledger.jsonl` | 共写文件 | 所有 AI IDE 追加 | 机器可读事实源，每行一个版本事件 |
+| `.ai-sync/AUDIT_LOG.md` | 共写文件 | 所有 AI IDE 追加 | 人类可读审计摘要 |
+| `.ai-sync/PROJECT_STATE.md` | 共写文件 | 所有 AI IDE 更新 | 项目协作状态快照 |
+| `.ai-sync/cursors/<ai-ide-id>.json` | 私有进度文件 | 对应 AI IDE | 记录该 AI IDE 已读到哪个版本 |
+| `.ai-sync/locks/*.lock.json` | 共写声明文件 | 所有 AI IDE | 声明准备修改的模块/文件范围 |
 
-类型：所有 AI IDE 共写文件。
-
-职责：
-
-- 项目的全量协作变更账本。
-- 每一行是一条 JSON 事件。
-- 版本号必须单调递增，例如 `v0001`、`v0002`、`v0003`。
-- 不允许跳号。
-- 不允许随意重写历史。
-
-所有 AI IDE 在完成一次有意义的工作后，都应该追加一条事件。
-
-事件必须尽量包含：
-
-- 需求背景。
-- 问题背景。
-- 解决方案。
-- 当前状态。
-- 遗留问题。
-- 后续计划。
-- 潜在风险。
-- 代码更新文件。
-- 文档更新文件。
-- Git 分支和 commit 信息。
-- 测试结果。
-- 一句话摘要。
-
-### 5.2 `AUDIT_LOG.md`
-
-类型：所有 AI IDE 共写文件。
-
-职责：
-
-- 人机共看的审计日志。
-- 用 Markdown 记录每个版本的可读摘要。
-- 方便人类快速查看“什么时候、哪个 AI、对哪个项目做了什么”。
-
-该文件不是机器读取的唯一依据，机器读取应优先使用 `ledger.jsonl`。
-
-### 5.3 `PROJECT_STATE.md`
-
-类型：所有 AI IDE 共写文件。
-
-职责：
-
-- 项目当前协作状态摘要。
-- 记录当前分支、最新 commit、最新同步版本、活跃 AI IDE、当前工作、风险和下一步。
-- 方便新 AI IDE 快速了解项目状态。
-
-建议保持简短，不要变成大型交接文档。
-
-### 5.4 `cursors/<ai-ide-id>.json`
-
-类型：AI IDE 私有文件，但位于共享目录内。
-
-职责：
-
-- 记录某个 AI IDE 已经读到哪个同步版本。
-- 防止该 AI IDE 跳过中间版本。
-- 每个 AI IDE 只更新自己的 cursor 文件。
-
-示例：
-
-```json
-{
-  "ai_ide_id": "trae-main",
-  "last_read_version": "v0002",
-  "last_read_timestamp": "2026-07-09T16:45:00+08:00",
-  "notes": "Read and acknowledged v0000-v0002."
-}
-```
-
-规则：
-
-- `trae-main` 只更新 `.ai-sync/cursors/trae-main.json`。
-- `codex-main` 只更新 `.ai-sync/cursors/codex-main.json`。
-- 一个 AI IDE 不应替另一个 AI IDE 直接推进 cursor，除非用户明确要求修复同步状态。
-
-### 5.5 `locks/*.lock.json`
-
-类型：所有 AI IDE 可写的声明文件。
-
-职责：
-
-- 声明某个 AI IDE 正准备修改哪些模块或文件。
-- 降低多个 AI IDE 同时改同一模块的风险。
-- 这是软锁，不是操作系统级文件锁。
-
-示例：
-
-```json
-{
-  "lock_id": "lock-20260709-164500-trae-main",
-  "source_ai_ide": "trae-main",
-  "timestamp": "2026-07-09T16:45:00+08:00",
-  "scope": {
-    "modules": ["news-aide-mode1"],
-    "files": ["LLM-RPA-Bot-news_aide_V1/app/engine/mode1_runner.py"]
-  },
-  "intent": "Investigate Mode1 submit confirmation behavior",
-  "expires_at": "2026-07-09T18:45:00+08:00"
-}
-```
-
-规则：
-
-- 修改前检查 `locks/`。
-- 如果发现重叠锁，必须提示用户。
-- 工作完成并写入 ledger 后，创建者应删除自己的锁。
-
-## 6. 新 AI IDE 接入命名规范
-
-每个 AI IDE 必须有稳定 ID。
+## 4. AI IDE 命名规范
 
 推荐格式：
 
@@ -248,100 +74,567 @@
 <ide-name>-<role-or-instance>
 ```
 
-推荐示例：
+示例：
 
-```text
-trae-main
-codex-main
-cursor-main
-cursor-rpa
-cline-qa
-windsurf-ui
-```
+- `trae-main`
+- `codex-main`
+- `cursor-rpa`
+- `cline-qa`
+- `windsurf-ui`
 
-命名建议：
+规则：
 
-- `ide-name` 使用小写英文，例如 `trae`、`codex`、`cursor`、`cline`。
-- `role-or-instance` 用于区分用途或实例，例如 `main`、`rpa`、`qa`、`ui`。
-- 不建议使用空格、中文、特殊符号。
-- 同一个项目中不要重复使用同一个 AI IDE ID。
+- 使用小写英文、数字和连字符。
+- 不使用空格、中文或特殊符号。
+- 同一项目内 AI IDE ID 不得重复。
+- cursor 文件名必须与 AI IDE ID 一致，例如 `.ai-sync/cursors/trae-main.json`。
 
-对应私有 cursor 文件：
+## 5. 通用写入流程
 
-```text
-.ai-sync/cursors/<ai-ide-id>.json
-```
-
-例如：
-
-```text
-.ai-sync/cursors/trae-main.json
-.ai-sync/cursors/codex-main.json
-.ai-sync/cursors/cursor-rpa.json
-```
-
-对应私有 skill 使能目录：
-
-```text
-.<ide-name>/skills/dual-agent-sync/SKILL.md
-```
-
-例如：
-
-```text
-.trae/skills/dual-agent-sync/SKILL.md
-.codex/skills/dual-agent-sync/SKILL.md
-.cursor/skills/dual-agent-sync/SKILL.md
-```
-
-## 7. AI IDE 标准工作流
-
-### 7.1 开始任务前
-
-AI IDE 必须静默执行：
+每次 AI IDE 开始任务前：
 
 1. 读取 `.ai-sync/ledger.jsonl`。
 2. 读取自己的 `.ai-sync/cursors/<ai-ide-id>.json`。
-3. 找出 cursor 之后所有未读版本。
-4. 按版本顺序读取，不能跳过。
-5. 如果发现来自其他 AI IDE 的更新，打印协作同步审计。
-6. 如果没有更新，则静默继续，不打扰用户。
+3. 从 `last_read_version` 后按顺序读取所有未读版本。
+4. 如果发现其他 AI IDE 更新，打印协作同步审计。
+5. 如果没有更新，静默继续。
 
-协作同步审计格式：
+每次 AI IDE 完成一段有价值工作后：
+
+1. 选择本文第 6 节中的一个记录场景。
+2. 向 `.ai-sync/ledger.jsonl` 追加一条事件。
+3. 向 `.ai-sync/AUDIT_LOG.md` 追加人类可读摘要。
+4. 更新 `.ai-sync/PROJECT_STATE.md`。
+5. 推进自己的 `.ai-sync/cursors/<ai-ide-id>.json`。
+6. 如有软锁，完成记录后释放自己的锁。
+
+## 6. 记录场景总表
+
+| 场景 | 适用情况 | 推荐 event_type | 是否允许流水账 | 核心记录目标 |
+| --- | --- | --- | --- | --- |
+| 已解决交付 | 问题明确，已更新代码/文档/配置 | `code_update`、`doc_update`、`bugfix`、`config_update`、`migration_update` | 可以简洁流水账 | 让其他 AI 知道改了什么、为何改、如何验证 |
+| 未解决排查 | 问题未解决，处于多轮诊断 | `analysis_handoff` | 不允许 | 形成当前有效诊断病历 |
+| 纠错诊断 | 新证据推翻旧结论 | `analysis_handoff`、`risk_notice` | 不允许 | 明确旧结论失效，新结论生效 |
+| 方案计划 | 只有方案、计划、边界或门禁状态 | `planning` | 可以简洁流水账 | 同步决策、边界、待确认项 |
+| 阶段交接 | 一个阶段结束，需要其他 AI 接手 | `handoff` | 可以结构化摘要 | 同步完成项、未完成项、风险和接手点 |
+| 部署运行 | CI、部署、线上/预发运行状态变化 | `deployment_update`、`risk_notice` | 可以简洁流水账 | 同步环境、结果、证据、回滚/后续验证 |
+| 冲突风险 | 发现并行修改、锁冲突、未读重叠变更 | `conflict_notice` | 不建议 | 说明冲突范围和决策需求 |
+| 测试验证 | 专门补充测试结果或验证证据 | `test_update` | 可以简洁流水账 | 同步测试范围、结果、未测风险 |
+
+## 7. 场景一：已解决交付
+
+### 7.1 触发条件
+
+- 问题已经明确。
+- 已经完成代码、文档、配置、迁移或测试更新。
+- 有明确的验证结果或明确说明未验证内容。
+
+### 7.2 要写哪些文件
+
+必须更新：
+
+- `.ai-sync/ledger.jsonl`
+- `.ai-sync/AUDIT_LOG.md`
+- `.ai-sync/PROJECT_STATE.md`
+- `.ai-sync/cursors/<ai-ide-id>.json`
+
+可选更新：
+
+- `.ai-sync/locks/*.lock.json`，如果此前创建了锁，完成后删除。
+
+### 7.3 ledger 记录内容
+
+必须包含：
+
+- `event_type`：`code_update`、`doc_update`、`bugfix`、`config_update` 或 `migration_update`。
+- `git.branch`、`git.base_commit`、`git.head_commit`：如尚未提交，写 `null` 并在摘要中说明。
+- `scope.files_changed`：代码/配置/迁移文件列表。
+- `scope.docs_changed`：文档文件列表。
+- `context.requirement_background`：需求背景。
+- `context.problem_background`：问题背景或触发原因。
+- `context.solution`：本次修改内容。
+- `context.current_status`：当前状态。
+- `context.remaining_issues`：遗留问题。
+- `context.next_steps`：后续动作。
+- `context.risks`：风险。
+- `verification.tests_run`：已执行验证。
+- `verification.tests_not_run`：未验证项及原因。
+- `summary`：一句话摘要。
+
+### 7.4 记录方式
+
+允许简洁流水账，但不能缺失关键事实。
+
+推荐摘要：
+
+```text
+修复 <问题>，更新 <文件/模块>，验证 <测试> 通过，剩余风险 <风险>。
+```
+
+### 7.5 AUDIT_LOG 写法
+
+```markdown
+## 2026-07-09 18:00:00 +08:00 - v0004 - trae-main
+
+- Project: news2-service
+- Type: bugfix
+- Summary: 修复 Mode1 runtime 键名不一致。
+- Files: src/lib/newsAideConfig.ts
+- Docs: LLM-RPA-Bot-news_aide_V1/DOCS/SDD.md
+- Git: master abc123 -> def456
+- Tests: npm run build passed
+- Risks: 仍需实机 RPA 验证。
+```
+
+## 8. 场景二：未解决排查
+
+### 8.1 触发条件
+
+- 问题还没有解决。
+- 已经进行了复杂分析、日志阅读、代码阅读或多轮假设验证。
+- 即使没有修改代码和文档，该分析结论对其他 AI IDE 有价值。
+
+### 8.2 要写哪些文件
+
+必须更新：
+
+- `.ai-sync/ledger.jsonl`
+- `.ai-sync/AUDIT_LOG.md`
+- `.ai-sync/PROJECT_STATE.md`
+- `.ai-sync/cursors/<ai-ide-id>.json`
+
+通常不更新：
+
+- `scope.files_changed` 和 `scope.docs_changed`，除非排查过程中确实修改了文件。
+
+### 8.3 禁止流水账
+
+不要记录完整聊天过程。
+
+不要写：
+
+```text
+第一轮怀疑 A，第二轮怀疑 B，第三轮又怀疑 C，后来发现 D，接着看了 E...
+```
+
+应该写成诊断病历：
+
+- 当前症状是什么。
+- 当前最新有效判断是什么。
+- 支撑证据是什么。
+- 哪些假设已经排除。
+- 哪些假设仍待验证。
+- 下一位 AI 应该先做什么。
+- 哪些检查不要重复。
+
+### 8.4 diagnostic_record 结构
+
+`analysis_handoff` 必须优先使用 `diagnostic_record`。
+
+```json
+{
+  "diagnostic_record": {
+    "status": "unresolved",
+    "symptom": "用户可见现象或失败表现",
+    "current_best_conclusion": "当前最新有效判断，接手 AI 优先相信这一条",
+    "confidence": "low|medium|high",
+    "evidence": [
+      {
+        "source": "日志/代码/截图/命令/用户描述",
+        "finding": "关键发现",
+        "supports": "它支持哪个结论"
+      }
+    ],
+    "ruled_out": [
+      {
+        "hypothesis": "已排除假设",
+        "reason": "排除原因"
+      }
+    ],
+    "open_hypotheses": [
+      {
+        "hypothesis": "仍待验证假设",
+        "next_check": "下一步如何验证"
+      }
+    ],
+    "next_actions": [
+      "接手 AI 应优先做什么"
+    ],
+    "do_not_repeat": [
+      "已经做过且无效的检查，避免重复消耗"
+    ],
+    "handoff_prompt": "给下一个大模型的精简提示词式上下文"
+  }
+}
+```
+
+### 8.5 handoff_prompt 写法
+
+`handoff_prompt` 应直接适合给下一位 AI 使用。
+
+推荐格式：
+
+```text
+你正在接手 <问题>。当前最新判断是 <结论>。关键证据包括 <证据>。已排除 <假设>。不要重复 <无效检查>。下一步优先验证 <检查项>。如需改代码，优先查看 <文件/模块>。
+```
+
+### 8.6 AUDIT_LOG 写法
+
+```markdown
+## 2026-07-09 18:20:00 +08:00 - v0005 - codex-main
+
+- Project: news2-service
+- Type: analysis_handoff
+- Summary: Mode1 提交后无回传，当前更可能是 callback 未触发而非前端渲染问题。
+- Files Analyzed: LLM-RPA-Bot-news_aide_V1/app/services/callback_client.py, supabase/functions/mode1-callback/index.ts
+- Current Conclusion: callback 链路需要优先验证。
+- Ruled Out: 前端 Mode1ReportRenderer 不是当前首要原因。
+- Next: Trae 优先检查客户端 callback 日志和 Edge Function 日志。
+- Do Not Repeat: 已检查前端历史报告渲染路径，无直接证据指向渲染层。
+```
+
+## 9. 场景三：纠错诊断
+
+### 9.1 触发条件
+
+- 新一轮排查推翻了旧结论。
+- 旧 ledger 版本中的判断可能误导其他 AI。
+- 需要明确“当前应采用哪个结论”。
+
+### 9.2 要写哪些文件
+
+必须更新：
+
+- `.ai-sync/ledger.jsonl`
+- `.ai-sync/AUDIT_LOG.md`
+- `.ai-sync/PROJECT_STATE.md`
+- `.ai-sync/cursors/<ai-ide-id>.json`
+
+### 9.3 ledger 记录内容
+
+使用 `event_type: "analysis_handoff"` 或 `event_type: "risk_notice"`。
+
+必须包含：
+
+```json
+{
+  "diagnostic_record": {
+    "status": "corrected",
+    "supersedes_version": "v0005",
+    "invalidated_assumption": "被推翻的旧假设",
+    "correction_reason": "为什么旧假设失效",
+    "current_best_conclusion": "当前最新有效结论",
+    "evidence": [],
+    "next_actions": [],
+    "handoff_prompt": "提醒下一位 AI 不要继续沿用旧结论"
+  }
+}
+```
+
+### 9.4 记录方式
+
+不要写成“又发现了一个新情况”。
+
+必须明确：
+
+- 旧结论来自哪个版本。
+- 旧结论为什么失效。
+- 新结论是什么。
+- 接手 AI 应该忽略哪些旧判断。
+
+### 9.5 AUDIT_LOG 写法
+
+```markdown
+## 2026-07-09 18:40:00 +08:00 - v0006 - trae-main
+
+- Project: news2-service
+- Type: analysis_handoff
+- Summary: 纠正 v0005：Mode1 无回传不是 callback 未触发，而是客户端未进入上传分支。
+- Supersedes: v0005
+- Invalidated Assumption: callback 链路是首要问题。
+- Current Conclusion: 优先检查客户端提交后 B1 轮询和上传前校验。
+- Next: Codex 不要继续排查前端渲染和 Edge Function，先看客户端日志。
+```
+
+## 10. 场景四：方案计划
+
+### 10.1 触发条件
+
+- 只确认了方案、计划、边界或门禁状态。
+- 尚未修改代码或文档。
+
+### 10.2 要写哪些文件
+
+必须更新：
+
+- `.ai-sync/ledger.jsonl`
+- `.ai-sync/AUDIT_LOG.md`
+- `.ai-sync/PROJECT_STATE.md`
+- `.ai-sync/cursors/<ai-ide-id>.json`
+
+### 10.3 ledger 记录内容
+
+使用 `event_type: "planning"`。
+
+必须包含：
+
+- 已确认方案。
+- 未确认问题。
+- 当前门禁状态。
+- 文件范围预估。
+- 下一步动作。
+- 风险。
+
+### 10.4 AUDIT_LOG 写法
+
+```markdown
+## 2026-07-09 19:00:00 +08:00 - v0007 - codex-main
+
+- Project: news2-service
+- Type: planning
+- Summary: 已确认 Mode1 runtime 键名修复方案，等待确认开发。
+- Gate: 已确认方案，未确认开发。
+- Scope: src/lib/newsAideConfig.ts, V1 DOCS
+- Next: 等用户确认开发后实施。
+```
+
+## 11. 场景五：阶段交接
+
+### 11.1 触发条件
+
+- 一个 AI IDE 完成阶段工作，需要另一个 AI IDE 接手。
+- 长任务中断、切换模型、切换 IDE 或进入下一阶段。
+
+### 11.2 要写哪些文件
+
+必须更新：
+
+- `.ai-sync/ledger.jsonl`
+- `.ai-sync/AUDIT_LOG.md`
+- `.ai-sync/PROJECT_STATE.md`
+- `.ai-sync/cursors/<ai-ide-id>.json`
+
+### 11.3 ledger 记录内容
+
+使用 `event_type: "handoff"`。
+
+必须包含：
+
+- 已完成。
+- 未完成。
+- 当前阻塞。
+- 下一步建议。
+- 风险。
+- 相关文件。
+- Git commit 或未提交状态。
+
+### 11.4 AUDIT_LOG 写法
+
+```markdown
+## 2026-07-09 19:20:00 +08:00 - v0008 - trae-main
+
+- Project: news2-service
+- Type: handoff
+- Summary: 完成 V1 客户端文档阅读，发现 Mode1 runtime 键名契约风险。
+- Completed: V1 DOCS 和关键代码只读梳理。
+- Pending: 尚未修改代码。
+- Next: Codex 可复核前端配置写入字段。
+- Risks: 前端保存 m23_*，客户端只读 mode1_*。
+```
+
+## 12. 场景六：部署运行状态
+
+### 12.1 触发条件
+
+- CI、部署、migration、Edge Function、Vercel、Supabase 或运行时状态发生变化。
+- 需要其他 AI IDE 了解环境状态。
+
+### 12.2 要写哪些文件
+
+必须更新：
+
+- `.ai-sync/ledger.jsonl`
+- `.ai-sync/AUDIT_LOG.md`
+- `.ai-sync/PROJECT_STATE.md`
+- `.ai-sync/cursors/<ai-ide-id>.json`
+
+### 12.3 ledger 记录内容
+
+使用 `event_type: "deployment_update"` 或 `event_type: "risk_notice"`。
+
+必须包含：
+
+- 环境：local、pre-release、production。
+- 操作：deploy、migration、rollback、manual verification。
+- 结果：success、failed、partial。
+- 证据：run id、URL、日志摘要。
+- 影响范围。
+- 回滚或下一步验证。
+
+### 12.4 AUDIT_LOG 写法
+
+```markdown
+## 2026-07-09 19:40:00 +08:00 - v0009 - codex-main
+
+- Project: news2-service
+- Type: deployment_update
+- Summary: Supabase migration 部署成功。
+- Environment: pre-release
+- Evidence: GitHub Actions run 123456 passed
+- Git: master abc123 -> def456
+- Next: Trae 可继续客户端联调。
+- Risks: 生产未部署。
+```
+
+## 13. 场景七：冲突风险
+
+### 13.1 触发条件
+
+- 发现未读事件涉及自己准备修改的文件。
+- 发现 `locks/` 中存在重叠声明。
+- Git status 显示非本人改动，且与当前任务相关。
+
+### 13.2 要写哪些文件
+
+一般先不写代码。
+
+可写入：
+
+- `.ai-sync/ledger.jsonl`
+- `.ai-sync/AUDIT_LOG.md`
+- `.ai-sync/PROJECT_STATE.md`
+- `.ai-sync/cursors/<ai-ide-id>.json`
+
+### 13.3 ledger 记录内容
+
+使用 `event_type: "conflict_notice"`。
+
+必须包含：
+
+- 冲突文件或模块。
+- 涉及版本或锁文件。
+- 当前 AI 的计划。
+- 需要用户决策的问题。
+
+### 13.4 AUDIT_LOG 写法
+
+```markdown
+## 2026-07-09 20:00:00 +08:00 - v0010 - trae-main
+
+- Project: news2-service
+- Type: conflict_notice
+- Summary: Trae 准备修改 mode1_runner.py，但 codex-main 已声明同文件软锁。
+- Overlap: LLM-RPA-Bot-news_aide_V1/app/engine/mode1_runner.py
+- Decision Needed: 等 Codex 完成、缩小范围，或由用户手工合并。
+```
+
+## 14. 场景八：测试验证
+
+### 14.1 触发条件
+
+- 只补充测试结果，没有新的代码或文档变更。
+- 实机验证、浏览器验证、CI 复跑或日志确认有同步价值。
+
+### 14.2 要写哪些文件
+
+必须更新：
+
+- `.ai-sync/ledger.jsonl`
+- `.ai-sync/AUDIT_LOG.md`
+- `.ai-sync/PROJECT_STATE.md`
+- `.ai-sync/cursors/<ai-ide-id>.json`
+
+### 14.3 ledger 记录内容
+
+使用 `event_type: "test_update"`。
+
+必须包含：
+
+- 测试对象。
+- 测试环境。
+- 测试命令或操作。
+- 结果。
+- 未测项。
+- 对下一步的影响。
+
+### 14.4 AUDIT_LOG 写法
+
+```markdown
+## 2026-07-09 20:20:00 +08:00 - v0011 - codex-main
+
+- Project: news2-service
+- Type: test_update
+- Summary: npm run build 通过，RPA 实机未测。
+- Tests Run: npm run build
+- Tests Not Run: real browser RPA
+- Result: pass
+- Next: Trae 可安排实机 Mode1 验证。
+```
+
+## 15. 标准 ledger 事件模板
+
+```json
+{
+  "version": "v0001",
+  "timestamp": "2026-07-09T20:30:00+08:00",
+  "project": "project-name",
+  "source_ai_ide": "trae-main",
+  "event_type": "code_update",
+  "git": {
+    "branch": "master",
+    "base_commit": null,
+    "head_commit": null
+  },
+  "scope": {
+    "modules": [],
+    "files_changed": [],
+    "docs_changed": [],
+    "files_analyzed": []
+  },
+  "context": {
+    "requirement_background": "",
+    "problem_background": "",
+    "solution": "",
+    "current_status": "",
+    "remaining_issues": [],
+    "next_steps": [],
+    "risks": [],
+    "diagnostic_record": null
+  },
+  "verification": {
+    "tests_run": [],
+    "tests_not_run": [],
+    "result": ""
+  },
+  "summary": ""
+}
+```
+
+## 16. 协作同步审计输出
+
+当 AI IDE 读取到其他 AI IDE 的未读事件时，必须在聊天窗口打印：
 
 ```markdown
 **协作同步审计**
-- 来源 AI IDE：codex-main
-- 版本：v0003
-- 时间：2026-07-09T17:00:00+08:00
-- 摘要：修复 Mode1 runtime 键名不一致。
-- 影响文件：src/lib/newsAideConfig.ts
-- 当前状态：代码已改，测试通过。
-- 后续建议：Trae 可继续验证客户端读取。
+- 来源 AI IDE：<source_ai_ide>
+- 版本：<version>
+- 类型：<event_type>
+- 时间：<timestamp>
+- 摘要：<summary>
+- 影响文件：<files_changed/docs_changed/files_analyzed>
+- 当前状态：<current_status 或 diagnostic_record.current_best_conclusion>
+- 后续建议：<next_steps 或 diagnostic_record.next_actions>
 ```
 
-### 7.2 修改前
+如果读取的是 `analysis_handoff`，必须优先展示：
 
-AI IDE 必须检查：
+- 当前最新有效结论。
+- 被排除假设。
+- 下一步检查。
+- 不要重复的检查。
+- handoff prompt。
 
-- 是否有未读 ledger 事件。
-- 是否有重叠的 `locks/*.lock.json`。
-- 计划修改文件是否与其他 AI IDE 最近修改范围重叠。
-
-如果有重叠风险，先提示用户，不直接改。
-
-### 7.3 修改后
-
-AI IDE 必须更新：
-
-- `.ai-sync/ledger.jsonl`：追加事件。
-- `.ai-sync/AUDIT_LOG.md`：追加人类可读摘要。
-- `.ai-sync/PROJECT_STATE.md`：更新当前状态。
-- `.ai-sync/cursors/<ai-ide-id>.json`：推进自己的读取版本。
-
-## 8. 在 `news` 项目中的推荐落地
-
-以 `H:\AIcode\Trae\news` 为例：
+## 17. 在 news 项目中的推荐落地
 
 Trae 私有使能目录：
 
@@ -377,111 +670,15 @@ H:\AIcode\Trae\news\.ai-sync\cursors\trae-main.json
 H:\AIcode\Trae\news\.ai-sync\cursors\codex-main.json
 ```
 
-## 9. 为什么需要 `.codex` 和 `.trae`
+## 18. 版本说明
 
-`.codex` 和 `.trae` 是不同 AI IDE 的项目级配置/skill 目录。
+本文档版本：`1.1`
 
-原因：
+本版本重点：
 
-- 不同 AI IDE 对 skill 的加载路径可能不同。
-- 让每个 AI IDE 都能在当前项目内找到自己的 skill 定义。
-- 避免依赖全局安装，保证项目迁移后仍能带着协作规则走。
-
-重要边界：
-
-- `.codex` 不是共享账本。
-- `.trae` 不是共享账本。
-- 真正跨 IDE 共享的是 `.ai-sync`。
-
-## 10. 初始化一个新项目
-
-在新项目根目录执行或等效复制：
-
-```powershell
-Copy-Item -Path "H:\AIcode\Trae\skill\dual-agent-sync-skill\templates\.ai-sync" -Destination "<project-root>\.ai-sync" -Recurse
-```
-
-为 Trae 安装项目级 skill：
-
-```powershell
-New-Item -ItemType Directory -Force -Path "<project-root>\.trae\skills\dual-agent-sync"
-Copy-Item -Path "H:\AIcode\Trae\skill\dual-agent-sync-skill\.trae\skills\dual-agent-sync\SKILL.md" -Destination "<project-root>\.trae\skills\dual-agent-sync\SKILL.md"
-```
-
-为 Codex 安装项目级 skill：
-
-```powershell
-New-Item -ItemType Directory -Force -Path "<project-root>\.codex\skills\dual-agent-sync"
-Copy-Item -Path "H:\AIcode\Trae\skill\dual-agent-sync-skill\.trae\skills\dual-agent-sync\SKILL.md" -Destination "<project-root>\.codex\skills\dual-agent-sync\SKILL.md"
-```
-
-然后为每个 AI IDE 创建自己的 cursor。
-
-## 11. 试用验证流程
-
-### 11.1 Trae 写入测试事件
-
-Trae 使用 `trae-main` 作为 AI IDE ID，向 `.ai-sync/ledger.jsonl` 追加一条测试事件。
-
-示例摘要：
-
-```text
-测试skill同步更新机制，代码和文档没有任何变化
-```
-
-### 11.2 Codex 读取测试事件
-
-Codex 下次开始任务时应读取自己的 cursor，发现未读版本，并打印协作同步审计。
-
-预期审计：
-
-```markdown
-**协作同步审计**
-- 来源 AI IDE：trae-main
-- 版本：v0002
-- 摘要：测试skill同步更新机制，代码和文档没有任何变化
-```
-
-### 第 4 步：Alpha 进行问题分析（无代码变更）
-
-**场景**：现在轮到 `alpha`。用户要求它分析 `module-a.js` 可能存在的性能问题，但不需要立即修改。
-
-1.  **模拟分析**：`alpha` 经过一番“思考”，得出了一个结论：“模块 A 在处理大规模数据时可能存在循环性能瓶颈”。
-
-2.  **调用 skill (记录分析结论)**：让 `alpha` 将这个诊断结论作为一次“会诊”结果同步给其他协作者。
-    *   **输入给 AI 的指令**：“使用 `dual-agent-sync` skill，记录一次分析交接。问题是‘模块A有性能风险’，结论是‘大规模数据下存在循环瓶颈，建议后续优化’。我的 ID 是 `ai-ide-alpha`。”
-    *   **预期行为**：
-        *   AI 会在 `ledger.jsonl` 中追加一条 `v0003` 的新事件，`event_type` 为 `analysis_handoff`。
-        *   该事件的 `files_changed` 为空，但 `context` 块会详细记录分析过程和结论。
-        *   AI 更新 `AUDIT_LOG.md` 和 `PROJECT_STATE.md`。
-        *   AI 更新自己的 cursor (`ai-ide-alpha.json`) 至 `v0003`。
-
-### 第 5 步：Bravo 同步“会诊”结果
-
-**场景**：切回 `bravo` 视角。
-
-1.  **调用 skill (检查更新)**：
-    *   **输入给 AI 的指令**：“使用 `dual-agent-sync` skill 检查 `H:\AIcode\Trae\test-collab-project` 的更新。我的 ID 是 `ai-ide-bravo`。”
-    *   **预期行为**：
-        *   AI 读取 `ledger.jsonl`，发现 `v0003` 是 `bravo` 未读的。
-        *   AI 在聊天窗口打印 `v0003` 的审计日志，摘要为 `alpha` 的分析结论。
-        *   `bravo` 现在已经知道了性能瓶颈的诊断信息，可以直接开始着手修复，而无需重复分析。
-
-## 12. 版本说明
-
-本文档版本：`1.0`
-
-适用范围：
-
-- 项目级安装。
-- 多 AI IDE 协作。
-- Trae、Codex、Cursor、Cline、Windsurf 等可读取项目文件的 AI IDE。
-
-核心原则：
-
-- skill 私有使能目录按 AI IDE 分开。
-- `.ai-sync` 是项目唯一共享协作目录。
-- `ledger.jsonl` 是机器可读事实源。
-- `AUDIT_LOG.md` 是人类可读审计源。
-- cursor 是每个 AI IDE 的私有读取进度。
-- lock 是声明式软锁，不是强制文件锁。
+- 改为按场景说明记录方式。
+- 明确每个场景要写哪些文件。
+- 明确已解决问题允许简洁流水账。
+- 明确未解决排查必须使用诊断病历。
+- 明确推翻旧结论时必须写纠错记录。
+- 明确 `handoff_prompt` 应适合直接给下一位大模型使用。
