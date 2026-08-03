@@ -55,10 +55,10 @@ curl -o .trae/skills/dual-agent-sync/SKILL.md https://raw.githubusercontent.com/
 ## 📅 变更日志 (Changelog)
 
 - **v1.3 (Latest)**：
-  - 新增**增量读取机制**：基于行号 + 版本校验的增量同步，AI IDE 只读取上次位置之后的新事件，大幅降低 Token 消耗。
-  - 新增**会话级游标**：同一 IDE 的不同对话窗口独立维护读取位置，切换窗口后自动从上次位置续读。
-  - 新增**会话 ID 自动命名**：当 IDE 无内置会话 ID 时，自动生成格式化 ID（如 `CODEX_202608031701_A0001`）。
-  - Cursor 文件 schema 升级：新增 `sessions` 对象和 `last_read_line` 字段，完全向后兼容。
+  - 新增**增量读取机制**：基于行号 + 版本校验（`last_read_line`）的增量同步，AI IDE 只读取上次位置之后的新事件，大幅降低 Token 消耗与加载延迟。
+  - 新增**会话级游标追踪**：每个 IDE 维护单一 cursor 文件，内部通过 `sessions` 对象独立记录不同对话窗口的读取位置，切换或恢复窗口时精准续读。
+  - 新增**会话 ID 智能识别与自动命名**：优先使用 IDE 内置 Conversation ID（如 UUID）；若 IDE 未提供，则自动生成格式化序列 ID（如 `CODEX_202608031701_A0001`，支持 A0001~Z9999 跨年/跨月递增循环），项目间自动隔离。
+  - **Cursor Schema 升级与全兼容**：新增 `sessions` 映射与 `last_read_line` 字段，完全向后兼容旧版单游标格式。
 - **v1.2**：
   - 增强 `files_changed` 字段，支持精确记录修改的行号范围（如 `{"file": "src/main.py", "lines": ["10-20"]}`），大幅降低接手 AI 的 Token 消耗，实现精准“按需加载”。
   - 将 `README.md` 重构为产品落地页。
