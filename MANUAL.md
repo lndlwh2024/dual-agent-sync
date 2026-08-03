@@ -48,7 +48,7 @@
 ├─ AUDIT_LOG.md
 ├─ PROJECT_STATE.md
 ├─ cursors/
-│  ├─ trae-main.json
+│  ├─ trae-main.json      # 单个 IDE 对应一个文件，内部记录该 IDE 下多会话的同步进度
 │  ├─ codex-main.json
 │  └─ <ai-ide-id>.json
 └─ locks/
@@ -89,15 +89,38 @@
 - 同一项目内 AI IDE ID 不得重复。
 - cursor 文件名必须与 AI IDE ID 一致，例如 `.ai-sync/cursors/trae-main.json`。
 
+### 4.1 会话 ID 规范
+
+每个 AI IDE 的对话窗口需要一个会话 ID，用于在 cursor 文件中独立追踪每个窗口的读取位置。
+
+会话 ID 来源：
+
+- 如果 IDE 提供内置 conversation ID（如 UUID），直接使用。
+- 如果 IDE 无内置 ID，由 skill 自动生成。
+
+自动生成规则：
+
+- 格式：`<IDE大写>_<YYYYMMDDHHmm>_<字母><4位数字>`
+- 示例：`CODEX_202608031701_A0001`
+- 序号从 `A0001` 递增到 `A9999`，满后切换为 `B0001`（使用当前真实时间戳），依次类推直到 `Z9999`，然后循环回 `A`（使用新时间戳）。
+- 序号在当前项目的 cursor 文件内隔离递增，不同项目互不影响。
+
+确定下一个自动生成 ID 的方法：读取当前 cursor 文件，找到所有匹配本 IDE 前缀的会话 key，取最大字母和序号，递增生成。
+
 ## 5. 通用写入流程
 
 每次 AI IDE 开始任务前：
 
-1. 读取 `.ai-sync/ledger.jsonl`。
-2. 读取自己的 `.ai-sync/cursors/<ai-ide-id>.json`。
-3. 从 `last_read_version` 后按顺序读取所有未读版本。
-4. 如果发现其他 AI IDE 更新，打印协作同步审计。
-5. 如果没有更新，静默继续。
+1. 确定当前对话窗口的会话 ID（使用 IDE 内置 ID 或自动生成）。
+2. 读取自己的 `.ai-sync/cursors/<ai-ide-id>.json`，在 `sessions` 中查找当前会话 ID 的记录。
+3. 如果当前会话无记录（新窗口），全量读取 `.ai-sync/ledger.jsonl`。
+4. 如果有记录且包含 `last_read_line`：
+   a. 读取 `ledger.jsonl` 的第 `last_read_line` 行，校验 `version` 是否等于 `last_read_version`。
+   b. 校验通过：从 `last_read_line + 1` 行开始增量读取。
+   c. 校验失败：打印警告，回退全量读取（说明 ledger 文件可能被手动编辑）。
+5. 如果有记录但无 `last_read_line`（旧版 cursor 升级），全量读取。
+6. 如果发现其他 AI IDE 更新，打印协作同步审计。
+7. 如果没有更新，静默继续。
 
 每次 AI IDE 完成一段有价值工作后：
 
@@ -105,8 +128,18 @@
 2. 向 `.ai-sync/ledger.jsonl` 追加一条事件。
 3. 向 `.ai-sync/AUDIT_LOG.md` 追加人类可读摘要。
 4. 更新 `.ai-sync/PROJECT_STATE.md`。
-5. 推进自己的 `.ai-sync/cursors/<ai-ide-id>.json`。
+5. 推进自己的 `.ai-sync/cursors/<ai-ide-id>.json`：更新当前会话在 `sessions` 中的 `last_read_version`、`last_read_line`（刚写入事件所在的行号）和 `last_read_timestamp`。
 6. 如有软锁，完成记录后释放自己的锁。
+
+### 5.1 增量读取安全机制
+
+增量读取依赖 `ledger.jsonl` 的纯追加（append-only）特性，行号与版本号存在稳定映射关系。
+
+校验机制：每次增量读取前，先读取 `last_read_line` 所在行，验证该行的 `version` 字段是否与 cursor 中记录的 `last_read_version` 一致。
+
+回退策略：如果校验失败（说明 ledger 被手动编辑或 repair 操作改变了行号），自动回退为全量读取，并在聊天窗口打印警告。
+
+向后兼容：旧版 cursor 文件缺少 `last_read_line` 和 `sessions` 字段时，视为全量读取模式，不影响正常工作。
 
 ## 6. 记录场景总表
 

@@ -50,6 +50,7 @@ Each line of `.ai-sync/ledger.jsonl` is one JSON object.
 - The next version must be previous max version plus one.
 - Never skip versions.
 - Never advance a cursor past an unread version.
+- In an append-only ledger, line N (1-indexed) corresponds to version `v{N:04d}` (where the init event v0000 is not stored, so line 1 = v0001, line 2 = v0002, etc.). This stable mapping enables incremental reads by line number.
 
 ## Event Types
 
@@ -65,3 +66,30 @@ Each line of `.ai-sync/ledger.jsonl` is one JSON object.
 - `handoff`
 - `risk_notice`
 - `conflict_notice`
+
+## Cursor Schema
+
+Each AI IDE maintains one cursor file at `.ai-sync/cursors/<ai-ide-id>.json`. The file tracks read positions per conversation window (session).
+
+```json
+{
+  "ai_ide_id": "trae-main",
+  "sessions": {
+    "5ec98d64-6f1f-4c7b": {
+      "last_read_version": "v0007",
+      "last_read_line": 7,
+      "last_read_timestamp": "2026-08-03T12:10:00+08:00"
+    }
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `ai_ide_id` | string | Yes | The AI IDE identifier |
+| `sessions` | object | Yes | Map of session ID → read position |
+| `sessions.<id>.last_read_version` | string | Yes | Last read ledger version |
+| `sessions.<id>.last_read_line` | number | No | Line number of last read version (1-indexed). If absent, triggers full read. |
+| `sessions.<id>.last_read_timestamp` | string | No | ISO 8601 timestamp of last sync |
+
+Session ID may be an IDE-provided conversation UUID or auto-generated in the format `<IDE_UPPERCASE>_<YYYYMMDDHHmm>_<Letter><4-digit>` (e.g., `CODEX_202608031701_A0001`).

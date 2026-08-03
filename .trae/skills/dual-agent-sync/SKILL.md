@@ -44,7 +44,7 @@ If `.ai-sync/` is missing, ask the user whether to initialize it from the skill 
 - **Agent Behavior Mandate**: Any AI agent utilizing this skill **MUST** treat the synchronization check as a mandatory, silent, pre-flight operation before executing any user-requested task (e.g., code modification, analysis, new feature development). If no updates are found, proceed silently. If updates from another agent are found, the agent **MUST** report them to the user as an "Audit Notice" before proceeding with the primary task.
 - Treat `.ai-sync/ledger.jsonl` as append-only.
 - Never delete or rewrite historical sync events unless the user explicitly approves a repair.
-- Maintain one cursor file per AI IDE.
+- Maintain one cursor file per AI IDE, with session-level read tracking inside.
 - Always read all versions after the current cursor; never skip intermediate versions.
 - Prefer precise file reads based on event `files_changed` (utilizing line numbers if provided to reduce context) and `docs_changed`.
 - Do not reread the whole repository unless the ledger is missing, corrupt, or insufficient.
@@ -64,34 +64,76 @@ vscode-agent-a
 
 If no ID exists, ask the user to choose one.
 
+### Session ID
+
+Each conversation window within an AI IDE is identified by a session ID. The session ID is used to track independent read positions per window.
+
+- If the IDE provides a built-in conversation ID (e.g., a UUID), use it directly.
+- If the IDE does not provide one, auto-generate using the format: `<IDE_UPPERCASE>_<YYYYMMDDHHmm>_<Letter><4-digit>`.
+  - Example: `CODEX_202608031701_A0001`
+  - The 4-digit number increments from `0001` to `9999` within the same letter prefix.
+  - When `9999` is reached, advance the letter (A → B) and use the current timestamp. After Z9999, cycle back to A with a new timestamp.
+  - The sequence counter is scoped to the current project's cursor file.
+
+To determine the next auto-generated session ID, read the existing cursor file, find all session keys matching the current IDE prefix, identify the highest letter and number, and increment accordingly.
+
+### Cursor File
+
 Store the read cursor in:
 
 ```text
 .ai-sync/cursors/<ai-ide-id>.json
 ```
 
+Each cursor file contains a `sessions` object. Each key is a session ID, and the value tracks that session's read position.
+
 Recommended cursor schema:
 
 ```json
 {
   "ai_ide_id": "trae-main",
-  "last_read_version": "v0000",
-  "last_read_timestamp": null,
-  "notes": "Set by dual-agent-sync. Do not advance manually unless repairing sync state."
+  "sessions": {
+    "5ec98d64-6f1f-4c7b": {
+      "last_read_version": "v0007",
+      "last_read_line": 7,
+      "last_read_timestamp": "2026-08-03T12:10:00+08:00"
+    },
+    "TRAE_202608031100_A0001": {
+      "last_read_version": "v0003",
+      "last_read_line": 3,
+      "last_read_timestamp": "2026-08-03T11:00:00+08:00"
+    }
+  }
 }
+```
+
+Field reference:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `ai_ide_id` | string | Yes | — | The AI IDE identifier |
+| `sessions` | object | Yes | `{}` | Map of session ID → read position |
+| `sessions.<id>.last_read_version` | string | Yes | `"v0000"` | Last read ledger version |
+| `sessions.<id>.last_read_line` | number | No | `null` | Line number of last read version in ledger (1-indexed). If null, triggers full read. |
+| `sessions.<id>.last_read_timestamp` | string | No | `null` | ISO 8601 timestamp of last read |
 ```
 
 ## Start-Of-Task Sync
 
 Before starting work:
 
-1. Locate `.ai-sync/ledger.jsonl`.
-2. Locate `.ai-sync/cursors/<ai-ide-id>.json`.
-3. Determine the last read version for this AI IDE.
-4. Read every event after that version in order.
-5. Print a chat audit notice for each relevant update from another AI IDE.
-6. Read only files listed in new events when context is needed.
-7. Update the local cursor only after the updates are understood.
+1. Determine the current session ID for this conversation window.
+2. Locate `.ai-sync/cursors/<ai-ide-id>.json` and find the entry for the current session ID in `sessions`.
+3. If no entry exists for this session (new window), perform a **full read** of `.ai-sync/ledger.jsonl`.
+4. If an entry exists with `last_read_line`:
+   a. Use `view_file` to read line `last_read_line` of `ledger.jsonl`.
+   b. Parse the JSON and verify that `version` equals `last_read_version`.
+   c. ✅ Match: read only from `last_read_line + 1` onward (incremental read).
+   d. ❌ Mismatch: the ledger file has been modified; print a warning and fall back to full read.
+5. If an entry exists without `last_read_line` (upgraded from old cursor), perform a full read.
+6. Print a chat audit notice for each relevant update from another AI IDE.
+7. Read only files listed in new events when context is needed.
+8. Update the current session's cursor entry after the updates are understood.
 
 Audit notice format:
 
@@ -199,7 +241,7 @@ Also update:
 
 - `.ai-sync/AUDIT_LOG.md`
 - `.ai-sync/PROJECT_STATE.md`
-- `.ai-sync/cursors/<ai-ide-id>.json`
+- `.ai-sync/cursors/<ai-ide-id>.json`: update the current session's entry in `sessions` with the new `last_read_version`, `last_read_line` (the line number of the event just written), and `last_read_timestamp`.
 
 ## Versioning
 

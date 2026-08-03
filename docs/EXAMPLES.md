@@ -19,13 +19,26 @@
 {"version":"v0007","timestamp":"2026-07-08T12:00:00+08:00","project":"news2-service","source_ai_ide":"cursor-rpa","event_type":"code_update","git":{"branch":"master","base_commit":"abc123","head_commit":"def456"},"scope":{"modules":["mode1-runtime"],"files_changed":["src/lib/newsAideConfig.ts"],"docs_changed":["LLM-RPA-Bot-news_aide_V1/DOCS/SDD.md"]},"context":{"requirement_background":"Mode1 runtime must be independent from M23.","problem_background":"Frontend wrote m23_* keys while client reads mode1_* keys.","solution":"Changed frontend defaults and fields to mode1_* namespace.","current_status":"Build passed; real RPA verification pending.","remaining_issues":["Need pre-release manual verification"],"next_steps":["Run Mode1 task with custom runtime values"],"risks":["Existing DB settings may still contain old m23_* keys"]},"verification":{"tests_run":["npm run build"],"tests_not_run":["real browser RPA"],"result":"pass"},"summary":"Align Mode1 runtime key namespace."}
 ```
 
-## Example Cursor
+## Example Cursor (Session-Level)
 
 ```json
 {
   "ai_ide_id": "trae-main",
-  "last_read_version": "v0007",
-  "last_read_timestamp": "2026-07-08T12:10:00+08:00",
-  "notes": "Read and acknowledged v0001-v0007."
+  "sessions": {
+    "5ec98d64-6f1f-4c7b": {
+      "last_read_version": "v0007",
+      "last_read_line": 7,
+      "last_read_timestamp": "2026-07-08T12:10:00+08:00"
+    },
+    "TRAE_202607081200_A0001": {
+      "last_read_version": "v0003",
+      "last_read_line": 3,
+      "last_read_timestamp": "2026-07-08T11:00:00+08:00"
+    }
+  }
 }
 ```
+
+Each key in `sessions` is a session ID (conversation window). The `last_read_line` field enables incremental reads — the agent verifies the version at that line before reading only new events from `last_read_line + 1`.
+
+If a session has no `last_read_line` (e.g., upgraded from an older cursor format), the agent falls back to a full read.

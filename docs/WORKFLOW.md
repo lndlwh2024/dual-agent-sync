@@ -14,7 +14,9 @@ Assign every AI IDE a stable ID:
 
 The AI IDE invokes `dual-agent-sync`.
 
-It reads its cursor, then reads all ledger events after that cursor.
+It determines the current session ID for this conversation window.
+
+It reads its cursor file and locates the current session's entry. If no entry exists (new window), it performs a full read of the ledger. If an entry exists with `last_read_line`, it verifies the version at that line and reads incrementally from `last_read_line + 1`. If verification fails, it falls back to a full read.
 
 If it detects another AI IDE's update, it prints a chat audit notice.
 

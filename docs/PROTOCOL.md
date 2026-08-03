@@ -17,11 +17,30 @@ The protocol has five parts:
 Every AI IDE must run this sequence before doing work:
 
 1. Identify its stable `ai_ide_id`.
-2. Read its cursor.
-3. Read all ledger events after the cursor version.
-4. Print a chat audit notice for updates from other AI IDEs.
-5. Read only files referenced by relevant new events.
-6. Update its cursor after understanding the updates.
+2. Determine the current session ID for this conversation window.
+3. Read its cursor file and locate the current session's entry in `sessions`.
+4. If the session has a `last_read_line`, verify the version at that line matches `last_read_version`.
+5. If verified, read only ledger events after `last_read_line` (incremental read).
+6. If not verified or no `last_read_line` exists, read all ledger events (full read).
+7. Print a chat audit notice for updates from other AI IDEs.
+8. Read only files referenced by relevant new events.
+9. Update the current session's cursor entry after understanding the updates.
+
+## Session-Level Cursors
+
+Read positions are tracked per conversation window, not per AI IDE. Each cursor file contains a `sessions` object where each key is a session ID and each value tracks that session's read position.
+
+A new conversation window with no cursor entry performs a full read. A resumed window with an existing entry performs an incremental read from its last position.
+
+Session IDs come from the IDE's built-in conversation ID or are auto-generated using the format `<IDE_UPPERCASE>_<YYYYMMDDHHmm>_<Letter><4-digit>` (e.g., `CODEX_202608031701_A0001`).
+
+## Incremental Read Safety
+
+Incremental reads depend on `ledger.jsonl` being append-only. Before reading from `last_read_line + 1`, the agent verifies that line `last_read_line` contains the expected `last_read_version`.
+
+If the verification fails (e.g., the ledger was manually edited), the agent falls back to a full read and prints a warning.
+
+If `last_read_line` is missing from a cursor entry (upgraded from an older cursor format), the agent performs a full read.
 
 ## Before Editing
 
