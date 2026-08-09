@@ -116,7 +116,54 @@ Field reference:
 | `sessions.<id>.last_read_version` | string | Yes | `"v0000"` | Last read ledger version |
 | `sessions.<id>.last_read_line` | number | No | `null` | Line number of last read version in ledger (1-indexed). If null, triggers full read. |
 | `sessions.<id>.last_read_timestamp` | string | No | `null` | ISO 8601 timestamp of last read |
+
+### Cursor Write Safety (Read-Merge-Write)
+
+Because multiple conversation windows may start concurrently within the same AI IDE, writing to a shared cursor file without coordination can cause two classes of failure:
+
+- **Session ID collision**: Two windows both read the same cursor file before either writes, then both generate the same next session ID (e.g., `A0001`).
+- **Last-write-wins overwrite**: The later writer replaces the cursor file entirely, discarding session entries written by the earlier window.
+
+To prevent both failures, every cursor file read-then-write operation MUST follow this protocol:
+
+**Step 1 — Acquire cursor lock**
+
+Write `.ai-sync/locks/cursor-<ai-ide-id>.lock.json` with your provisional session ID and timestamp.
+If the lock file already exists and its `expires_at` has not yet passed, wait up to 10 seconds (retry every 1 second).
+If the lock is still held after 10 seconds, emit a warning to the user and proceed in best-effort mode (do not block the user indefinitely).
+
+Cursor lock format:
+
+```json
+{
+  "lock_id": "cursor-lock-<ai-ide-id>-<provisional-session-id>",
+  "source_session": "<provisional-session-id>",
+  "ai_ide_id": "<ai-ide-id>",
+  "timestamp": "<ISO 8601>",
+  "expires_at": "<ISO 8601, 60 seconds after timestamp>"
+}
 ```
+
+**Step 2 — Re-read the cursor file after locking**
+
+Read `.ai-sync/cursors/<ai-ide-id>.json` again after the lock is acquired.
+This captures any session entries written by other windows between your initial read and the lock acquisition.
+
+**Step 3 — Generate or confirm session ID**
+
+Scan all existing session keys in the freshly-read `sessions` object to find the highest sequence for the current IDE prefix.
+If the provisional session ID is already taken, increment and generate a new one.
+
+**Step 4 — Merge and write**
+
+Update only the current session's entry in `sessions`.
+Do not overwrite or remove other sessions' entries.
+Replace the cursor file atomically with the fully merged content.
+
+**Step 5 — Release the lock**
+
+Delete `.ai-sync/locks/cursor-<ai-ide-id>.lock.json` immediately after the write completes.
+
 
 ## Start-Of-Task Sync
 
@@ -241,7 +288,7 @@ Also update:
 
 - `.ai-sync/AUDIT_LOG.md`
 - `.ai-sync/PROJECT_STATE.md`
-- `.ai-sync/cursors/<ai-ide-id>.json`: update the current session's entry in `sessions` with the new `last_read_version`, `last_read_line` (the line number of the event just written), and `last_read_timestamp`.
+- `.ai-sync/cursors/<ai-ide-id>.json`: update the current session's entry in `sessions` with the new `last_read_version`, `last_read_line` (the line number of the event just written), and `last_read_timestamp`. **MUST** follow the Read-Merge-Write protocol described in [Cursor Write Safety](#cursor-write-safety-read-merge-write).
 
 ## Versioning
 
