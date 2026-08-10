@@ -124,16 +124,28 @@ Because multiple conversation windows may start concurrently within the same AI 
 - **Session ID collision**: Two windows both read the same cursor file before either writes, then both generate the same next session ID (e.g., `A0001`).
 - **Last-write-wins overwrite**: The later writer replaces the cursor file entirely, discarding session entries written by the earlier window.
 
-To prevent both failures, every cursor file read-then-write operation MUST follow this six-step protocol:
+To prevent both failures, every cursor file read-then-write operation MUST follow this six-step protocol.
 
-**Step 1 — Attempt atomic exclusive lock creation**
+> **Design note — how two steps serialize concurrent writers**: AI agent file tools do not expose
+> OS-level `O_EXCL` / `CreateNew` atomic primitives. This protocol approximates that guarantee using
+> a write-then-verify pair. Step 1 writes the lock with **exclusive intent** (the file must not already
+> exist in the non-expired case); Step 2 is the **true serialization point** — only the agent whose
+> `lock_id` survives the re-read holds the lock. Even if two agents write simultaneously, exactly one
+> will win Step 2; the loser detects the mismatch and backs off deterministically.
 
-Before writing the lock file, first **check whether** `.ai-sync/locks/cursor-<ai-ide-id>.lock.json` already exists:
+**Step 1 — Write lock with exclusive intent (CreateNew / O_EXCL semantics)**
 
-- **Does not exist**: write the lock file immediately with your provisional session ID and `expires_at` set to 60 seconds from now.
-- **Exists and not expired** (current time ≤ `expires_at`): wait 1 second and retry. Repeat up to 10 times (10 seconds total).
-- **Exists and expired** (current time > `expires_at`): the previous owner failed to release; overwrite the stale lock with your own entry and proceed.
-- **Still locked after 10 retries**: **do NOT proceed with any cursor write**. Report to the user: `"Cursor lock held by another session — cursor not updated to avoid data loss."` Abort the cursor write for this cycle entirely.
+Attempt to create `.ai-sync/locks/cursor-<ai-ide-id>.lock.json` as if using an exclusive-create operation:
+
+- **Does not exist**: write the lock file with your provisional `lock_id` and `expires_at` 60 seconds from now.
+  **Do not overwrite any pre-existing file in this branch** — the write is valid only because the file is absent.
+- **Exists and not expired** (current time ≤ `expires_at`): **do not overwrite**. Treat the file as belonging
+  to its current owner. Wait 1 second and retry. Repeat up to 10 times (10 seconds total).
+- **Exists and expired** (current time > `expires_at`): the previous owner failed to release within its declared
+  window. Overwrite the stale lock with your own entry and proceed to Step 2.
+- **Still locked after 10 retries**: **do NOT proceed with any cursor write**.
+  Report to the user: `"Cursor lock held by another session — cursor not updated to avoid data loss."`
+  Abort the cursor write for this cycle entirely.
 
 Cursor lock format:
 
@@ -147,13 +159,19 @@ Cursor lock format:
 }
 ```
 
-**Step 2 — Verify lock ownership**
+**Step 2 — Verify lock ownership (the true serialization point)**
 
 Immediately after writing the lock file, **re-read** `.ai-sync/locks/cursor-<ai-ide-id>.lock.json` from disk.
 Compare the `lock_id` field with your own provisional `lock_id`:
 
-- **Matches**: lock is confirmed as yours. Proceed to Step 3.
-- **Does not match**: another window won the race and overwrote your lock. Back off, wait 1 second, and restart from Step 1. After 3 consecutive ownership failures, report to the user and abort the cursor write.
+- **Matches**: lock is confirmed as yours. You are the sole authorized writer. Proceed to Step 3.
+- **Does not match**: another window wrote its lock in the same narrow window, or overwrote yours.
+  **You did not win the exclusive slot.** Back off, wait 1 second, and restart from Step 1.
+  After 3 consecutive ownership failures, report to the user and abort the cursor write.
+
+> **Note**: Once Step 2 confirms ownership, no other correctly-behaving agent will overwrite your lock
+> (they will see the file as “exists and not expired” in Step 1 and wait). Step 2 is therefore the
+> deterministic serialization boundary of this protocol.
 
 **Step 3 — Re-read the cursor file**
 
