@@ -124,13 +124,16 @@ Because multiple conversation windows may start concurrently within the same AI 
 - **Session ID collision**: Two windows both read the same cursor file before either writes, then both generate the same next session ID (e.g., `A0001`).
 - **Last-write-wins overwrite**: The later writer replaces the cursor file entirely, discarding session entries written by the earlier window.
 
-To prevent both failures, every cursor file read-then-write operation MUST follow this protocol:
+To prevent both failures, every cursor file read-then-write operation MUST follow this six-step protocol:
 
-**Step 1 — Acquire cursor lock**
+**Step 1 — Attempt atomic exclusive lock creation**
 
-Write `.ai-sync/locks/cursor-<ai-ide-id>.lock.json` with your provisional session ID and timestamp.
-If the lock file already exists and its `expires_at` has not yet passed, wait up to 10 seconds (retry every 1 second).
-If the lock is still held after 10 seconds, emit a warning to the user and proceed in best-effort mode (do not block the user indefinitely).
+Before writing the lock file, first **check whether** `.ai-sync/locks/cursor-<ai-ide-id>.lock.json` already exists:
+
+- **Does not exist**: write the lock file immediately with your provisional session ID and `expires_at` set to 60 seconds from now.
+- **Exists and not expired** (current time ≤ `expires_at`): wait 1 second and retry. Repeat up to 10 times (10 seconds total).
+- **Exists and expired** (current time > `expires_at`): the previous owner failed to release; overwrite the stale lock with your own entry and proceed.
+- **Still locked after 10 retries**: **do NOT proceed with any cursor write**. Report to the user: `"Cursor lock held by another session — cursor not updated to avoid data loss."` Abort the cursor write for this cycle entirely.
 
 Cursor lock format:
 
@@ -144,25 +147,36 @@ Cursor lock format:
 }
 ```
 
-**Step 2 — Re-read the cursor file after locking**
+**Step 2 — Verify lock ownership**
 
-Read `.ai-sync/cursors/<ai-ide-id>.json` again after the lock is acquired.
-This captures any session entries written by other windows between your initial read and the lock acquisition.
+Immediately after writing the lock file, **re-read** `.ai-sync/locks/cursor-<ai-ide-id>.lock.json` from disk.
+Compare the `lock_id` field with your own provisional `lock_id`:
 
-**Step 3 — Generate or confirm session ID**
+- **Matches**: lock is confirmed as yours. Proceed to Step 3.
+- **Does not match**: another window won the race and overwrote your lock. Back off, wait 1 second, and restart from Step 1. After 3 consecutive ownership failures, report to the user and abort the cursor write.
+
+**Step 3 — Re-read the cursor file**
+
+With lock ownership confirmed, read `.ai-sync/cursors/<ai-ide-id>.json` again from disk.
+This captures session entries written by other windows between your initial read and lock acquisition.
+
+**Step 4 — Generate or confirm session ID**
 
 Scan all existing session keys in the freshly-read `sessions` object to find the highest sequence for the current IDE prefix.
 If the provisional session ID is already taken, increment and generate a new one.
 
-**Step 4 — Merge and write**
+**Step 5 — Merge and write**
 
 Update only the current session's entry in `sessions`.
 Do not overwrite or remove other sessions' entries.
-Replace the cursor file atomically with the fully merged content.
+Replace the cursor file with the fully merged content.
 
-**Step 5 — Release the lock**
+**Step 6 — Release the lock (owner only)**
 
-Delete `.ai-sync/locks/cursor-<ai-ide-id>.lock.json` immediately after the write completes.
+Before deleting `.ai-sync/locks/cursor-<ai-ide-id>.lock.json`, **re-read the lock file** and verify its `lock_id` still matches your session's lock ID.
+
+- **Matches**: delete the lock file immediately.
+- **Does not match**: the lock was taken over (e.g., after expiry). Do **not** delete it — the current owner is responsible for releasing.
 
 
 ## Start-Of-Task Sync
