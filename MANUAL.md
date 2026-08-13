@@ -1,4 +1,4 @@
-# dual-agent-sync skill 使用说明书 v1.1
+﻿# dual-agent-sync skill 使用说明书 v1.1
 
 本文档是 `dual-agent-sync` 的场景版使用说明。核心目标是让多个 AI IDE 在同一个项目中同步“个体进展、问题判断、代码/文档变化、风险和下一步”，而不是让下一个 AI 重新全量阅读项目。
 
@@ -8,7 +8,7 @@
 - 已解决问题记录交付结果，允许简洁流水账。
 - 未解决问题记录诊断病历，禁止聊天流水账。
 - 推翻旧结论时必须显式纠错，避免旧结论继续误导后续 AI。
-- 共享事实源是 `.ai-sync/ledger.jsonl`，人类阅读入口是 `.ai-sync/AUDIT_LOG.md`。
+- 共享事实源是 `.ai-sync/collab/ledger.jsonl`，人类阅读入口是 `.ai-sync/collab/AUDIT_LOG.md`。
 - 每个 AI IDE 只推进自己的 cursor，不替其他 AI IDE 标记已读。
 - 后续 `git push` 必须得到用户明确授权。
 
@@ -60,11 +60,11 @@
 
 | 文件 | 类型 | 谁写 | 作用 |
 | --- | --- | --- | --- |
-| `.ai-sync/ledger.jsonl` | 共写文件 | 所有 AI IDE 追加 | 机器可读事实源，每行一个版本事件 |
-| `.ai-sync/AUDIT_LOG.md` | 共写文件 | 所有 AI IDE 追加 | 人类可读审计摘要 |
-| `.ai-sync/PROJECT_STATE.md` | 共写文件 | 所有 AI IDE 更新 | 项目协作状态快照 |
-| `.ai-sync/cursors/<ai-ide-id>.json` | 私有进度文件 | 对应 AI IDE | 记录该 AI IDE 已读到哪个版本 |
-| `.ai-sync/locks/*.lock.json` | 共写声明文件 | 所有 AI IDE | 声明准备修改的模块/文件范围 |
+| `.ai-sync/collab/ledger.jsonl` | 共写文件 | 所有 AI IDE 追加 | 机器可读事实源，每行一个版本事件 |
+| `.ai-sync/collab/AUDIT_LOG.md` | 共写文件 | 所有 AI IDE 追加 | 人类可读审计摘要 |
+| `.ai-sync/collab/PROJECT_STATE.md` | 共写文件 | 所有 AI IDE 更新 | 项目协作状态快照 |
+| `.ai-sync/collab/cursors/<ai-ide-id>.json` | 私有进度文件 | 对应 AI IDE | 记录该 AI IDE 已读到哪个版本 |
+| `.ai-sync/collab/locks/*.lock.json` | 共写声明文件 | 所有 AI IDE | 声明准备修改的模块/文件范围 |
 
 ## 4. AI IDE 命名规范
 
@@ -87,7 +87,7 @@
 - 使用小写英文、数字和连字符。
 - 不使用空格、中文或特殊符号。
 - 同一项目内 AI IDE ID 不得重复。
-- cursor 文件名必须与 AI IDE ID 一致，例如 `.ai-sync/cursors/trae-main.json`。
+- cursor 文件名必须与 AI IDE ID 一致，例如 `.ai-sync/collab/cursors/trae-main.json`。
 
 ### 4.1 会话 ID 规范
 
@@ -112,8 +112,8 @@
 每次 AI IDE 开始任务前：
 
 1. 确定当前对话窗口的会话 ID（使用 IDE 内置 ID 或自动生成）。
-2. 读取自己的 `.ai-sync/cursors/<ai-ide-id>.json`，在 `sessions` 中查找当前会话 ID 的记录。
-3. 如果当前会话无记录（新窗口），全量读取 `.ai-sync/ledger.jsonl`。
+2. 读取自己的 `.ai-sync/collab/cursors/<ai-ide-id>.json`，在 `sessions` 中查找当前会话 ID 的记录。
+3. 如果当前会话无记录（新窗口），全量读取 `.ai-sync/collab/ledger.jsonl`。
 4. 如果有记录且包含 `last_read_line`：
    a. 读取 `ledger.jsonl` 的第 `last_read_line` 行，校验 `version` 是否等于 `last_read_version`。
    b. 校验通过：从 `last_read_line + 1` 行开始增量读取。
@@ -125,10 +125,10 @@
 每次 AI IDE 完成一段有价值工作后：
 
 1. 选择本文第 6 节中的一个记录场景。
-2. 向 `.ai-sync/ledger.jsonl` 追加一条事件。
-3. 向 `.ai-sync/AUDIT_LOG.md` 追加人类可读摘要。
-4. 更新 `.ai-sync/PROJECT_STATE.md`。
-5. 推进自己的 `.ai-sync/cursors/<ai-ide-id>.json`：更新当前会话在 `sessions` 中的 `last_read_version`、`last_read_line`（刚写入事件所在的行号）和 `last_read_timestamp`。
+2. 向 `.ai-sync/collab/ledger.jsonl` 追加一条事件。
+3. 向 `.ai-sync/collab/AUDIT_LOG.md` 追加人类可读摘要。
+4. 更新 `.ai-sync/collab/PROJECT_STATE.md`。
+5. 推进自己的 `.ai-sync/collab/cursors/<ai-ide-id>.json`：更新当前会话在 `sessions` 中的 `last_read_version`、`last_read_line`（刚写入事件所在的行号）和 `last_read_timestamp`。
 6. 如有软锁，完成记录后释放自己的锁。
 
 ### 5.1 增量读取安全机制
@@ -166,14 +166,14 @@
 
 必须更新：
 
-- `.ai-sync/ledger.jsonl`
-- `.ai-sync/AUDIT_LOG.md`
-- `.ai-sync/PROJECT_STATE.md`
-- `.ai-sync/cursors/<ai-ide-id>.json`
+- `.ai-sync/collab/ledger.jsonl`
+- `.ai-sync/collab/AUDIT_LOG.md`
+- `.ai-sync/collab/PROJECT_STATE.md`
+- `.ai-sync/collab/cursors/<ai-ide-id>.json`
 
 可选更新：
 
-- `.ai-sync/locks/*.lock.json`，如果此前创建了锁，完成后删除。
+- `.ai-sync/collab/locks/*.lock.json`，如果此前创建了锁，完成后删除。
 
 ### 7.3 ledger 记录内容
 
@@ -231,10 +231,10 @@
 
 必须更新：
 
-- `.ai-sync/ledger.jsonl`
-- `.ai-sync/AUDIT_LOG.md`
-- `.ai-sync/PROJECT_STATE.md`
-- `.ai-sync/cursors/<ai-ide-id>.json`
+- `.ai-sync/collab/ledger.jsonl`
+- `.ai-sync/collab/AUDIT_LOG.md`
+- `.ai-sync/collab/PROJECT_STATE.md`
+- `.ai-sync/collab/cursors/<ai-ide-id>.json`
 
 通常不更新：
 
@@ -338,10 +338,10 @@
 
 必须更新：
 
-- `.ai-sync/ledger.jsonl`
-- `.ai-sync/AUDIT_LOG.md`
-- `.ai-sync/PROJECT_STATE.md`
-- `.ai-sync/cursors/<ai-ide-id>.json`
+- `.ai-sync/collab/ledger.jsonl`
+- `.ai-sync/collab/AUDIT_LOG.md`
+- `.ai-sync/collab/PROJECT_STATE.md`
+- `.ai-sync/collab/cursors/<ai-ide-id>.json`
 
 ### 9.3 ledger 记录内容
 
@@ -400,10 +400,10 @@
 
 必须更新：
 
-- `.ai-sync/ledger.jsonl`
-- `.ai-sync/AUDIT_LOG.md`
-- `.ai-sync/PROJECT_STATE.md`
-- `.ai-sync/cursors/<ai-ide-id>.json`
+- `.ai-sync/collab/ledger.jsonl`
+- `.ai-sync/collab/AUDIT_LOG.md`
+- `.ai-sync/collab/PROJECT_STATE.md`
+- `.ai-sync/collab/cursors/<ai-ide-id>.json`
 
 ### 10.3 ledger 记录内容
 
@@ -442,10 +442,10 @@
 
 必须更新：
 
-- `.ai-sync/ledger.jsonl`
-- `.ai-sync/AUDIT_LOG.md`
-- `.ai-sync/PROJECT_STATE.md`
-- `.ai-sync/cursors/<ai-ide-id>.json`
+- `.ai-sync/collab/ledger.jsonl`
+- `.ai-sync/collab/AUDIT_LOG.md`
+- `.ai-sync/collab/PROJECT_STATE.md`
+- `.ai-sync/collab/cursors/<ai-ide-id>.json`
 
 ### 11.3 ledger 记录内容
 
@@ -486,10 +486,10 @@
 
 必须更新：
 
-- `.ai-sync/ledger.jsonl`
-- `.ai-sync/AUDIT_LOG.md`
-- `.ai-sync/PROJECT_STATE.md`
-- `.ai-sync/cursors/<ai-ide-id>.json`
+- `.ai-sync/collab/ledger.jsonl`
+- `.ai-sync/collab/AUDIT_LOG.md`
+- `.ai-sync/collab/PROJECT_STATE.md`
+- `.ai-sync/collab/cursors/<ai-ide-id>.json`
 
 ### 12.3 ledger 记录内容
 
@@ -533,10 +533,10 @@
 
 可写入：
 
-- `.ai-sync/ledger.jsonl`
-- `.ai-sync/AUDIT_LOG.md`
-- `.ai-sync/PROJECT_STATE.md`
-- `.ai-sync/cursors/<ai-ide-id>.json`
+- `.ai-sync/collab/ledger.jsonl`
+- `.ai-sync/collab/AUDIT_LOG.md`
+- `.ai-sync/collab/PROJECT_STATE.md`
+- `.ai-sync/collab/cursors/<ai-ide-id>.json`
 
 ### 13.3 ledger 记录内容
 
@@ -572,10 +572,10 @@
 
 必须更新：
 
-- `.ai-sync/ledger.jsonl`
-- `.ai-sync/AUDIT_LOG.md`
-- `.ai-sync/PROJECT_STATE.md`
-- `.ai-sync/cursors/<ai-ide-id>.json`
+- `.ai-sync/collab/ledger.jsonl`
+- `.ai-sync/collab/AUDIT_LOG.md`
+- `.ai-sync/collab/PROJECT_STATE.md`
+- `.ai-sync/collab/cursors/<ai-ide-id>.json`
 
 ### 14.3 ledger 记录内容
 
