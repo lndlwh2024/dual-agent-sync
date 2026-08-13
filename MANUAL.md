@@ -35,20 +35,23 @@
      │  ├─ cursors/                 ← 各 AI IDE 的阅读游标（读到了哪一行）
      │  └─ locks/                   ← 协作软锁（防文件编辑冲突）
      │
-     └─ codegraph/                  ← ════ 【模块二：代码架构图谱】 ════
-        │                             （回答：当前的业务文件结构和依赖关系是怎样的）
-        │                             ★ 被动更新模块：跟随 collab 事件而变化
-        │
-        ├─ graph.json               ← 🗺️ 当前最新的全项目文件关系图谱（直接覆盖更新）
-        │
-        ├─ graph.changelog.jsonl    ← 📝 图谱历史变更日志
-        │                              [内含字段]
-        │                              - "trigger_version": "v0005"
-        │                              ★ 外键机制：图谱本身不记录 Git Hash！它记录 trigger_version。
-        │                              当需要回滚图谱时，系统看到 v0005，就会去上面的 ledger.jsonl
-        │                              找 v0005 对应的 "git.head_commit"，从而指挥最外层的 .git 恢复文件。
-        │
-        └─ locks/                   ← 图谱写入互斥锁（确保图谱更新不发生并发覆盖）
+     ├─ codegraph/                  ← ════ 【模块二：代码架构图谱】 ════
+     │  │                             （回答：当前的业务文件结构和依赖关系是怎样的）
+     │  │                             ★ 被动更新模块：跟随 collab 事件而变化
+     │  │
+     │  ├─ graph.json               ← 🗺️ 当前最新的全项目文件关系图谱（直接覆盖更新）
+     │  │
+     │  ├─ graph.changelog.jsonl    ← 📝 图谱历史变更日志
+     │  │                              [内含字段]
+     │  │                              - "trigger_version": "v0005"
+     │  │                              ★ 外键机制：图谱本身不记录 Git Hash！它记录 trigger_version。
+     │  │                              当需要回滚图谱时，系统看到 v0005，就会去上面的 ledger.jsonl
+     │  │                              找 v0005 对应的 "git.head_commit"，从而指挥最外层的 .git 恢复文件。
+     │  │
+     │  └─ locks/                   ← 图谱写入互斥锁（确保图谱更新不发生并发覆盖）
+     │
+     ├─ migration.lock              ← 🔒 [临时文件] 根层迁移排他锁（仅在 V1->V2 升级期间存在）
+     └─ .migration_backup_v1/       ← 📁 [临时目录] 迁移全量数据备份（仅在升级校验期间存在，成功后清理）
 ```
 
 
@@ -96,16 +99,26 @@
 
 ```text
 .ai-sync/
-├─ ledger.jsonl
-├─ AUDIT_LOG.md
-├─ PROJECT_STATE.md
-├─ cursors/
-│  ├─ trae-main.json      # 单个 IDE 对应一个文件，内部记录该 IDE 下多会话的同步进度
-│  ├─ codex-main.json
-│  └─ <ai-ide-id>.json
-└─ locks/
-   ├─ <scope>.lock.json
-   └─ .gitkeep
+├─ collab/                         # ════ 【项目协作模块】════
+│  ├─ ledger.jsonl                 # 协作事件账本（append-only 唯一事实源）
+│  ├─ AUDIT_LOG.md                 # 人类可读 Markdown 审计摘要
+│  ├─ PROJECT_STATE.md             # 当前协作状态快照
+│  ├─ cursors/                     # 各 AI IDE 读取游标目录
+│  │  ├─ trae-main.json
+│  │  ├─ codex-main.json
+│  │  └─ <ai-ide-id>.json
+│  └─ locks/                       # 协作模块专用锁
+│     ├─ cursor-<ide>.lock.json    # 游标并发写入锁
+│     └─ <scope>.lock.json         # 文件编辑意图软锁
+│
+├─ codegraph/                      # ════ 【代码架构图谱模块】════
+│  ├─ graph.json                   # 全项目文件级架构图谱（覆盖更新）
+│  ├─ graph.changelog.jsonl        # 图谱变更日志（增量 diff 追踪）
+│  └─ locks/                       # 图谱模块专用锁
+│     └─ codegraph.lock.json       # 图谱更新排他锁
+│
+├─ migration.lock                  # [临时文件] V1->V2 升级排他锁（迁移完成后自动销毁）
+└─ .migration_backup_v1/           # [临时目录] 升级备份目录（校验成功后自动清理）
 ```
 
 ## 3. 共享文件职责
@@ -116,7 +129,10 @@
 | `.ai-sync/collab/AUDIT_LOG.md` | 共写文件 | 所有 AI IDE 追加 | 人类可读审计摘要 |
 | `.ai-sync/collab/PROJECT_STATE.md` | 共写文件 | 所有 AI IDE 更新 | 项目协作状态快照 |
 | `.ai-sync/collab/cursors/<ai-ide-id>.json` | 私有进度文件 | 对应 AI IDE | 记录该 AI IDE 已读到哪个版本 |
-| `.ai-sync/collab/locks/*.lock.json` | 共写声明文件 | 所有 AI IDE | 声明准备修改的模块/文件范围 |
+| `.ai-sync/collab/locks/*.lock.json` | 协作声明文件 | 所有 AI IDE | 游标写入锁及文件编辑意图软锁 |
+| `.ai-sync/codegraph/graph.json` | 图谱核心文件 | 所有 AI IDE 更新 | 文件级代码架构图谱（覆盖更新） |
+| `.ai-sync/codegraph/graph.changelog.jsonl` | 图谱日志文件 | 所有 AI IDE 追加 | 图谱历史变动增量记录 |
+| `.ai-sync/codegraph/locks/*.lock.json` | 图谱排他锁 | 所有 AI IDE | 保护图谱覆盖更新时的并发安全 |
 
 ## 4. AI IDE 命名规范
 
@@ -772,3 +788,4 @@ H:\AIcode\Trae\news\.ai-sync\cursors\codex-main.json
 - 明确未解决排查必须使用诊断病历。
 - 明确推翻旧结论时必须写纠错记录。
 - 明确 `handoff_prompt` 应适合直接给下一位大模型使用。
+
