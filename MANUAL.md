@@ -55,16 +55,17 @@
 ```
 
 
-本文档是 `dual-agent-sync` 的场景版使用说明。核心目标是让多个 AI IDE 在同一个项目中同步“个体进展、问题判断、代码/文档变化、风险和下一步”，而不是让下一个 AI 重新全量阅读项目。
+本文档是 `dual-agent-sync` 的场景版使用说明。核心目标是让多个 AI IDE 在同一个项目中以最小 Token 开销同步“个体进展、问题判断、代码/文档变化、架构图谱、风险和下一步”，杜绝下一个 AI 盲目全量重读项目。
 
 ## 1. 总原则
 
-- 每个 AI IDE 默认已经了解项目全景，只需要同步其他成员的最新个体进展。
+- 每个 AI IDE 默认通过 `codegraph/graph.json` 秒级了解项目全景拓扑，只需要增量同步其他成员的最新个体进展。
 - 已解决问题记录交付结果，允许简洁流水账。
 - 未解决问题记录诊断病历，禁止聊天流水账。
 - 推翻旧结论时必须显式纠错，避免旧结论继续误导后续 AI。
-- 共享事实源是 `.ai-sync/collab/ledger.jsonl`，人类阅读入口是 `.ai-sync/collab/AUDIT_LOG.md`。
+- 共享事实源是 `.ai-sync/collab/ledger.jsonl`，架构全景源是 `.ai-sync/codegraph/graph.json`，人类阅读入口是 `.ai-sync/collab/AUDIT_LOG.md`。
 - 每个 AI IDE 只推进自己的 cursor，不替其他 AI IDE 标记已读。
+- 涉及架构拓扑变动时，必须同步维护 `codegraph/` 并声明 `graph_impact`。
 - 后续 `git push` 必须得到用户明确授权。
 
 ## 2. 项目目录分工
