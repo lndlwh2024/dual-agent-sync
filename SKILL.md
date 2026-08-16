@@ -75,8 +75,8 @@ Cursor file format (`.ai-sync/collab/cursors/<ai-ide-id>.json`):
   "ai_ide_id": "trae-main",
   "sessions": {
     "TRAE_202608141430_A0001": {
-      "last_read_version": "v0092",
-      "last_read_line": 93,
+      "last_read_version": "v0001",
+      "last_read_line": 2,
       "last_read_timestamp": "2026-08-14T14:30:00+08:00"
     }
   }
@@ -117,41 +117,41 @@ The graph represents project architecture as an adjacency list:
 {
   "version": "2.0.0",
   "generated_at": "2026-08-16T11:00:00+08:00",
-  "project_name": "news2-service",
+  "project_name": "example-project",
   "summary": {
-    "total_modules": 4,
-    "total_files": 1007,
-    "total_exports": 2045,
-    "total_edges": 711
+    "total_modules": 2,
+    "total_files": 25,
+    "total_exports": 80,
+    "total_edges": 45
   },
   "modules": [
     {
-      "id": "frontend",
-      "name": "Web Frontend",
+      "id": "core",
+      "name": "Core Application",
       "path": "src",
-      "type": "typescript_react",
-      "description": "Vite React SPA web client",
-      "entry_points": ["src/main.tsx", "src/App.tsx"]
+      "type": "typescript",
+      "description": "Core business logic and utilities",
+      "entry_points": ["src/index.ts"]
     }
   ],
   "nodes": [
     {
-      "id": "file:src/lib/supabase.ts",
-      "module_id": "frontend",
-      "path": "src/lib/supabase.ts",
+      "id": "file:src/utils.ts",
+      "module_id": "core",
+      "path": "src/utils.ts",
       "type": "file",
-      "purpose": "Supabase client initialization and auth session helpers",
+      "purpose": "Common utility functions and helpers",
       "exports": [
-        {"name": "supabase", "kind": "variable", "line": 5}
+        {"name": "formatDate", "kind": "function", "line": 10}
       ]
     }
   ],
   "edges": [
     {
-      "source": "file:src/App.tsx",
-      "target": "file:src/lib/supabase.ts",
+      "source": "file:src/index.ts",
+      "target": "file:src/utils.ts",
       "relation": "imports",
-      "symbols": ["supabase"]
+      "symbols": ["formatDate"]
     }
   ]
 }
@@ -165,12 +165,12 @@ When modifying code structure:
 ```json
 {
   "changelog_id": "cg_001",
-  "trigger_version": "v0093",
+  "trigger_version": "v0002",
   "timestamp": "2026-08-16T11:00:00+08:00",
-  "author": "codex-main",
+  "author": "trae-main",
   "diff_summary": {
     "nodes_added": [],
-    "nodes_modified": ["file:src/lib/supabase.ts"],
+    "nodes_modified": ["file:src/utils.ts"],
     "nodes_removed": [],
     "edges_added": [],
     "edges_removed": []
@@ -188,50 +188,49 @@ After completing work, the agent MUST perform the atomic dual-update:
 ### Ledger Event Schema (`collab/ledger.jsonl`):
 ```json
 {
-  "version": "v0093",
+  "version": "v0002",
   "timestamp": "2026-08-16T11:00:00+08:00",
-  "project": "news2-service",
-  "source_ai_ide": "codex-main",
-  "event_type": "graph_update",
+  "project": "example-project",
+  "source_ai_ide": "trae-main",
+  "event_type": "code_update",
   "git": {
-    "branch": "master",
-    "base_commit": "2916dfb0",
-    "head_commit": null
+    "branch": "main",
+    "base_commit": "abc1234",
+    "head_commit": "def5678"
   },
   "scope": {
-    "modules": ["collab", "codegraph"],
+    "modules": ["core"],
     "files_changed": [
       {
-        "file": ".ai-sync/codegraph/graph.json",
-        "lines": ["1-1000"]
+        "file": "src/utils.ts",
+        "lines": ["10-25"],
+        "purpose": "Enhance date formatting logic"
       }
     ],
     "docs_changed": [
-      ".ai-sync/codegraph/GRAPH_SUMMARY.md",
-      ".ai-sync/collab/AUDIT_LOG.md",
-      ".ai-sync/collab/PROJECT_STATE.md"
+      "docs/SPEC.md"
     ]
   },
   "graph_impact": {
     "has_graph_changes": true,
-    "nodes_affected": ["file:src/lib/supabase.ts"],
+    "nodes_affected": ["file:src/utils.ts"],
     "edges_affected": []
   },
   "context": {
-    "requirement_background": "Align dual-agent-sync V2.0 specification and graph topology.",
-    "problem_background": "Resolved upstream repository protocol and template consistency.",
-    "solution": "Upgraded V2.0 protocol across root, IDE paths, and collab/codegraph sub-systems.",
-    "current_status": "V2.0 split architecture fully active.",
+    "requirement_background": "Add ISO formatting support.",
+    "problem_background": "Legacy date formatter lacked timezone offset handling.",
+    "solution": "Implemented timezone-aware formatting functions in utils.",
+    "current_status": "Unit tests passed; ready for review.",
     "remaining_issues": [],
-    "next_steps": ["Agents use collab/ for sync and codegraph/ for architecture."],
+    "next_steps": ["Deploy update."],
     "risks": []
   },
   "verification": {
-    "tests_run": ["Schema validation", "Git status clean on business code"],
-    "tests_not_run": ["No business code changed"],
+    "tests_run": ["npm test"],
+    "tests_not_run": [],
     "result": "pass"
   },
-  "summary": "Dual-Agent-Sync V2.0 specification aligned and code graph synchronized."
+  "summary": "Added timezone-aware formatting to utils."
 }
 ```
 
